@@ -1,0 +1,187 @@
+C51 COMPILER V9.51   1                                                                     08/13/2019 23:19:28 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE 1
+OBJECT MODULE PLACED IN .\Objects\1.obj
+COMPILER INVOKED BY: C:\Program Files (x86)\MDK\C51\BIN\C51.EXE 1.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\
+                    -Listings\1.lst) TABS(2) OBJECT(.\Objects\1.obj)
+
+line level    source
+
+   1          #include <REGX51.H>
+   2          #include <INTRINS.H>
+   3          #include <MATH.H>
+   4          #define uchar unsigned char
+   5          #define uint unsigned int
+   6          #define d1 0x01
+   7          #define d2 0x02
+   8          #define d3 0x04
+   9          #define d4 0x08
+  10          #define d5 0x10
+  11          #define d6 0x20
+  12          #define d7 0x40
+  13          #define d8 0x80
+  14          
+  15          uchar nums[] = {
+  16            /*0-9*/ 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f,
+  17            /*-*/ 0x40};   //字形码
+  18          int numH = 1234;   //数码管前4位
+  19          int numL = 5678;   //数码管后4位
+  20          uchar p1 = 0xfe;   //控制LED哪几位亮
+  21          uchar mask = 0x00; //控制LED闪烁
+  22          
+  23          sbit m1 = P3 ^ 0;
+  24          sbit m2 = P3 ^ 1;
+  25          
+  26          /*主程入口*/
+  27          void main()
+  28          {
+  29   1        static uchar pos = 1; //位选[1-8]
+  30   1        uchar a = 0;
+  31   1        EA = 1;
+  32   1        ET0 = 1;
+  33   1        ET1 = 1;
+  34   1        TMOD = 0x11;
+  35   1        m1 = 0;
+  36   1        m2 = 0;
+  37   1        TR0 = 1;
+  38   1        TR1 = 1;
+  39   1        TF0 = 1;
+  40   1        TF1 = 1;
+  41   1        //开启定时器T0T1，边沿激活模式
+  42   1        for (;;)
+  43   1        {
+  44   2      
+  45   2          P1 = p1 | mask;
+  46   2          switch (pos++) //按位操作数码管，a指每一位的数值，pos指哪一位
+  47   2          {
+  48   3          case 1:
+  49   3            P2 = ~d1;
+  50   3            a = (abs(numH) / 1000) % 10;
+  51   3            break;
+  52   3          case 2:
+  53   3            P2 = ~d2;
+  54   3            a = (abs(numH) / 100) % 10;
+C51 COMPILER V9.51   1                                                                     08/13/2019 23:19:28 PAGE 2   
+
+  55   3            break;
+  56   3          case 3:
+  57   3            P2 = ~d3;
+  58   3            a = (abs(numH) / 10) % 10;
+  59   3            break;
+  60   3          case 4:
+  61   3            P2 = ~d4;
+  62   3            a = abs(numH) % 10;
+  63   3            break;
+  64   3          case 5:
+  65   3            P2 = ~d5;
+  66   3            a = (abs(numL) / 1000) % 10;
+  67   3            ;
+  68   3            break;
+  69   3          case 6:
+  70   3            P2 = ~d6;
+  71   3            a = (abs(numL) / 100) % 10;
+  72   3            break;
+  73   3          case 7:
+  74   3            P2 = ~d7;
+  75   3            a = (abs(numL) / 10) % 10;
+  76   3            break;
+  77   3          case 8:
+  78   3            P2 = ~d8;
+  79   3            a = abs(numL) % 10;
+  80   3          default:
+  81   3            pos = 1;
+  82   3          }
+  83   2          m2 = 1;     //解锁位选锁存器，输出位选码
+  84   2          m2 = 0;     //加锁
+  85   2          m1 = 1;     //解锁段选锁存器
+  86   2          P2 = nums[a]; //输出段选码
+  87   2          for (a = 100; a; a--)
+  88   2            ;
+  89   2          P2 = 0x00; //消隐
+  90   2          m1 = 0; //加锁
+  91   2        }
+  92   1      }
+  93          /*定时器T0，控制numL自增*/
+  94          void timer0() interrupt 1
+  95          {
+  96   1        static uint t = 0;      //计次
+  97   1        TH0 = (65535 - 1000) / 256; //1ms定时
+  98   1        TL0 = (65535 - 1000) % 256;
+  99   1        if (t == 100)
+ 100   1        {
+ 101   2          if (numL < 5732)
+ 102   2          {
+ 103   3            numL++;
+ 104   3            t = 0;
+ 105   3          }
+ 106   2          else
+ 107   2          {
+ 108   3            TR0 = 0;   //关闭定时器T0
+ 109   3            p1 = 0x00; //打开所有LED
+ 110   3          }
+ 111   2        }
+ 112   1        else
+ 113   1        {
+ 114   2          t++;
+ 115   2        }
+ 116   1      }
+C51 COMPILER V9.51   1                                                                     08/13/2019 23:19:28 PAGE 3   
+
+ 117          /*定时器T1，控制流水灯和闪烁，最后显示学号*/
+ 118          void timer1() interrupt 3
+ 119          {
+ 120   1        static uint t1 = 0, t2 = 0; //计次
+ 121   1        TH1 = (65535 - 1000) / 256; //1ms定时
+ 122   1        TL1 = (65535 - 1000) % 256;
+ 123   1        if (numL < 5732)
+ 124   1        {
+ 125   2          if (t1 >= 400)
+ 126   2          {
+ 127   3            p1 = _crol_(p1, 1);
+ 128   3            t1 = 0;
+ 129   3          }
+ 130   2          else
+ 131   2          {
+ 132   3            t1++;
+ 133   3          }
+ 134   2        }
+ 135   1        else
+ 136   1        {
+ 137   2          if (t2 < 3000)
+ 138   2          {
+ 139   3            t2++;
+ 140   3            if (t1 >= 200)
+ 141   3            {
+ 142   4              mask = ~mask;
+ 143   4              p1 = _crol_(p1, 1);
+ 144   4              t1 = 0;
+ 145   4            }
+ 146   3            else
+ 147   3            {
+ 148   4              t1++;
+ 149   4            }
+ 150   3          }
+ 151   2          else
+ 152   2          {
+ 153   3            TR1 = 0;   //关闭定时器T1
+ 154   3            p1 = 0xff; //关闭所有LED
+ 155   3            numH = 181;
+ 156   3            numL = 4044; //显示学号
+ 157   3          }
+ 158   2        }
+ 159   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    454    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     24    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

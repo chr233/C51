@@ -1,0 +1,148 @@
+C51 COMPILER V9.51   1                                                                     08/14/2019 07:50:36 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE 1
+OBJECT MODULE PLACED IN .\Objects\1.obj
+COMPILER INVOKED BY: C:\Program Files (x86)\MDK\C51\BIN\C51.EXE 1.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\
+                    -Listings\1.lst) TABS(2) OBJECT(.\Objects\1.obj)
+
+line level    source
+
+   1          #include <REGX51.H>
+   2          #include <INTRINS.H>
+   3          #include <MATH.H>
+   4          #define uchar unsigned char
+   5          #define uint unsigned int
+   6          #define d1 0x01
+   7          #define d2 0x02
+   8          #define d3 0x04
+   9          #define d4 0x08
+  10          #define d5 0x10
+  11          #define d6 0x20
+  12          #define d7 0x40
+  13          #define d8 0x80
+  14          uchar nums[] = {
+  15            /*0-9*/ 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f,
+  16            /*-*/ 0x40}; //字形码
+  17          
+  18          int num = 0; //要显示的数字
+  19          
+  20          /*主程入口*/
+  21          void main()
+  22          {
+  23   1        P3_0 = 0; //关闭蜂鸣器
+  24   1        EA = 1;
+  25   1        ET1 = 1;
+  26   1        EX0 = 1;
+  27   1        IT0 = 1;
+  28   1        TMOD = 0x10;
+  29   1        TR1 = 1;
+  30   1        TF1 = 1;
+  31   1        //开启定时器T1，设置为16位模式
+  32   1        //开启外部中断0，边沿激活模式
+  33   1        for (;;)
+  34   1          ;
+  35   1      }
+  36          /*定时器T1用来刷新数码管显示*/
+  37          void timer1() interrupt 3
+  38          {
+  39   1        static uchar pos = 1; //位选[1-6]
+  40   1        uchar a = 0;
+  41   1        TH1 = (65535 - 1000) / 256; //1ms定时
+  42   1        TL1 = (65535 - 1000) % 256; //大约1ms刷新显示1位
+  43   1        switch (pos++)        //显示num的1~6位
+  44   1        {
+  45   2        case 1:
+  46   2          P2 = ~d1;
+  47   2          if (num < 0)
+  48   2          {
+  49   3            a = 10;
+  50   3          }
+  51   2          else
+  52   2          {
+  53   3            a = 0;
+  54   3          }
+C51 COMPILER V9.51   1                                                                     08/14/2019 07:50:36 PAGE 2   
+
+  55   2          break;
+  56   2        case 2:
+  57   2          P2 = ~d2;
+  58   2          a = (abs(num) / 10000) % 10;
+  59   2          break;
+  60   2        case 3:
+  61   2          P2 = ~d3;
+  62   2          a = (abs(num) / 1000) % 10;
+  63   2          break;
+  64   2        case 4:
+  65   2          P2 = ~d4;
+  66   2          a = (abs(num) / 100) % 10;
+  67   2          break;
+  68   2        case 5:
+  69   2          P2 = ~d5;
+  70   2          a = (abs(num) / 10) % 10;
+  71   2          break;
+  72   2        case 6:
+  73   2          P2 = ~d6;
+  74   2          a = abs(num) % 10;
+  75   2        default:
+  76   2          pos = 1;
+  77   2        }
+  78   1        P1 = nums[a];
+  79   1        for (a = 100; a; a--)
+  80   1          ;
+  81   1        P1 = 0x00; //数码管消隐
+  82   1      }
+  83          /*按键中断处理*/
+  84          void keypress() interrupt 0
+  85          {
+  86   1        uchar i;
+  87   1        if (!(P3 & d3))
+  88   1        {
+  89   2          if (!(P3 & d6))
+  90   2          {          //k1按下
+  91   3            if (num < 32768) //防止num溢出
+  92   3            {
+  93   4              num++;
+  94   4            }
+  95   3            else
+  96   3            {
+  97   4              num = -32767;
+  98   4            }
+  99   3          }
+ 100   2          if (!(P3 & d7))
+ 101   2          { //k2按下
+ 102   3            if (num > -32767)
+ 103   3            {
+ 104   4              num--;
+ 105   4            }
+ 106   3            else
+ 107   3            {
+ 108   4              num = 32768;
+ 109   4            }
+ 110   3          }
+ 111   2          if (!(P3 & d8))
+ 112   2          { //k3按下
+ 113   3            num = 0;
+ 114   3          }
+ 115   2          P3_0 = 1; //激活蜂鸣器
+ 116   2          for (i = 500; i; i--)
+C51 COMPILER V9.51   1                                                                     08/14/2019 07:50:36 PAGE 3   
+
+ 117   2            ;
+ 118   2          P3_0 = 0;
+ 119   2        }
+ 120   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    397    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     14    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

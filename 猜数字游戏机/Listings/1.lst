@@ -1,0 +1,711 @@
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE 1
+OBJECT MODULE PLACED IN .\Objects\1.obj
+COMPILER INVOKED BY: C:\Program Files (x86)\MDK\C51\BIN\C51.EXE 1.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\
+                    -Listings\1.lst) TABS(2) OBJECT(.\Objects\1.obj)
+
+line level    source
+
+   1          #include <REG51.H>
+   2          #include <ABSACC.H>
+   3          #include <INTRINS.H>
+   4          #include <MATH.H>
+   5          #include <STDLIB.H>
+   6          
+   7          /*
+   8          **作者：Chr_
+   9          **邮箱：chr@chrxw.com
+  10          **
+  11          **遵循 GPL v3.0协议
+  12          */
+  13          
+  14          #define uchar unsigned char
+  15          #define uint unsigned int
+  16          /*取8位的某一位*/
+  17          #define d1 0x01
+  18          #define d2 0x02
+  19          #define d3 0x04
+  20          #define d4 0x08
+  21          #define d5 0x10
+  22          #define d6 0x20
+  23          #define d7 0x40
+  24          #define d8 0x80
+  25          /*键盘键位*/
+  26          #define k1 31
+  27          #define k2 32
+  28          #define k3 33
+  29          #define k4 21
+  30          #define k5 22
+  31          #define k6 23
+  32          #define k7 11
+  33          #define k8 12
+  34          #define k9 13
+  35          #define k0 42
+  36          #define kdiv 14
+  37          #define kmul 24
+  38          #define ksub 34
+  39          #define kadd 44
+  40          #define kclr 41
+  41          #define kequ 43
+  42          /*8255输出*/
+  43          #define PA XBYTE[0x7f00]
+  44          #define PB XBYTE[0x7f01]
+  45          #define PC XBYTE[0x7f02]
+  46          
+  47          #define MAXTRYS 10; //最大尝试次数
+  48          
+  49          void coreloop(void);
+  50          void flashdisplay(void);
+  51          void sleep(uint j);
+  52          void presskey(uchar keyid);
+  53          
+  54          const uchar words[] = {
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 2   
+
+  55            /*0-9*/ 0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7d, 0x07, 0x7f, 0x6f,
+  56            /*AbCdEFHIJLNOpqrSU*/ 0x77, 0x7c, 0x39, 0x5e, 0x79, 0x71, 0x76, 0x30, 0x0e, 0x38, 0x37, 0x5c, 0x73, 0x67,
+             - 0x50, 0x6d, 0x3e,
+  57            /*-_.空*/ 0x40, 0x08, 0x80, 0x00}; //字形码常量
+  58          
+  59          uchar keynumL = 0;
+  60          uchar keynumH = 0; //猜数字答案
+  61          uchar inputnumL = 0;
+  62          uchar inputnumH = 0; //输入的值
+  63          uchar tempinputnumL = 0;
+  64          uchar tempinputnumH = 0; //输入的值的缓存
+  65          uchar trysleft = 0;
+  66          uchar dispbuffer[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  67          uchar randseed = 0;
+  68          uchar flag = 0x00; //[光标位置H|光标位置L|赢|输|输入数值|重置游戏|退出游戏|开始游
+             -戏]
+  69          /*主程入口*/
+  70          void main(void)
+  71          {
+  72   1        EA = 1;
+  73   1        EX0 = 1;
+  74   1        ET1 = 1;
+  75   1        TR1 = 1;
+  76   1        TF1 = 1;
+  77   1        IT0 = 1;
+  78   1        P1 = 0x0f;        //键盘准备接受输入
+  79   1        XBYTE[0x7f03] = 0x80; //8255A初始化
+  80   1        coreloop();
+  81   1      }
+  82          /*主循环，使用flag变量控制状态*/
+  83          void coreloop()
+  84          {
+  85   1        uchar pos;   //位选[0-9][匹配度4位][输入4位][剩余次数2位]
+  86   1        uchar i, j, k; //循环计次
+  87   1      
+  88   1        for (;;)
+  89   1        {
+  90   2          switch (flag & 0x3f) //[光标位置H|光标位置L|赢|输|输入数值|重置游戏|退出游戏|开�
+             -�游戏]
+  91   2          {
+  92   3          case 0x02: //[0001|xxxx]
+  93   3            /*退出游戏*/
+  94   3            flag = 0x00;
+  95   3            inputnumH = 0;
+  96   3            inputnumL = 0; //清空输入
+  97   3            tempinputnumH = 0;
+  98   3            tempinputnumL = 0; //清空输入缓存
+  99   3            break;
+ 100   3          case 0x00: //[0000|0000]
+ 101   3            /*闲置状态*/
+ 102   3            for (i = 0; i <= 9; i++) //清空dispbuffer
+ 103   3            {
+ 104   4              dispbuffer[i] = 27;
+ 105   4            }
+ 106   3            dispbuffer[3] = 12;    //C
+ 107   3            dispbuffer[4] = 16;    //H
+ 108   3            dispbuffer[5] = 24;    //R
+ 109   3            dispbuffer[6] = 28;    //_
+ 110   3            for (k = 0; k < 11; k++) //滚动显示10位
+ 111   3            {
+ 112   4              for (j = 0; (j < 15) & !(flag & d1); j++) //延时
+ 113   4              {
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 3   
+
+ 114   5                flashdisplay();
+ 115   5              }
+ 116   4              pos = dispbuffer[9];
+ 117   4              for (i = 9; i > 0; i--) //dispbuffer右移
+ 118   4              {
+ 119   5                dispbuffer[i] = dispbuffer[i - 1];
+ 120   5              }
+ 121   4              dispbuffer[0] = pos;
+ 122   4            }
+ 123   3            break;
+ 124   3          case 0x04:
+ 125   3          case 0x05:
+ 126   3          case 0x06:
+ 127   3          case 0x07: //[0000|01xx]
+ 128   3            /*重置游戏*/
+ 129   3            for (k = 0; k < 10; k++)
+ 130   3            {
+ 131   4              dispbuffer[k] = k;
+ 132   4            }
+ 133   3            for (k = 0; k < 4; k++) //生成4位随机数，保存在dispbuffer最后4个元素中
+ 134   3            {
+ 135   4              srand(randseed);
+ 136   4              i = (rand() % (9 - k + 1));
+ 137   4              pos = dispbuffer[i];
+ 138   4              for (j = i; j <= 8 - k; j++) //dispbuffer左移，取出一位放在末尾
+ 139   4              {
+ 140   5                dispbuffer[j] = dispbuffer[j + 1];
+ 141   5              }
+ 142   4              dispbuffer[9 - k] = pos;
+ 143   4            }
+ 144   3            trysleft = MAXTRYS;
+ 145   3            keynumH = 10 * dispbuffer[7] + dispbuffer[6];
+ 146   3            keynumL = 10 * dispbuffer[8] + dispbuffer[9]; //储存4位随机数字
+ 147   3            inputnumH = 0;
+ 148   3            inputnumL = 0; //清空输入
+ 149   3            tempinputnumH = 0;
+ 150   3            tempinputnumL = 0; //清空输入缓存
+ 151   3            flag = 0x01;
+ 152   3            break;
+ 153   3          case 0x01: //[0000|0001]
+ 154   3            /*开始游戏状态*/
+ 155   3            dispbuffer[0] = 0; //数字正确位置正确
+ 156   3            dispbuffer[1] = 0; //数字正确位置错误
+ 157   3            if (inputnumH > 0 & inputnumL > 0)
+ 158   3            {
+ 159   4              dispbuffer[2] = keynumH / 10;
+ 160   4              dispbuffer[3] = keynumH % 10;
+ 161   4              dispbuffer[4] = keynumL / 10;
+ 162   4              dispbuffer[5] = keynumL % 10; //答案
+ 163   4              dispbuffer[6] = inputnumH / 10;
+ 164   4              dispbuffer[7] = inputnumH % 10;
+ 165   4              dispbuffer[8] = inputnumL / 10;
+ 166   4              dispbuffer[9] = inputnumL % 10; //输入
+ 167   4              for (i = 2; i <= 5; i++)    //判断几位猜对
+ 168   4              {
+ 169   5                for (j = 6; j <= 9; j++)
+ 170   5                {
+ 171   6                  if (dispbuffer[i] == dispbuffer[j]) //数字相同
+ 172   6                  {
+ 173   7                    if (i == j - 4)
+ 174   7                    { //位置相同
+ 175   8                      dispbuffer[0]++;
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 4   
+
+ 176   8                    }
+ 177   7                    else
+ 178   7                    { //位置不同
+ 179   8                      dispbuffer[1]++;
+ 180   8                    }
+ 181   7                    continue;
+ 182   7                  }
+ 183   6                }
+ 184   5              }
+ 185   4            }
+ 186   3            for (pos = 0; pos <= 9; pos++) //刷新数码管显示
+ 187   3            {
+ 188   4              switch (pos)
+ 189   4              {
+ 190   5              case 0:
+ 191   5                PB = ~d1;
+ 192   5                PC = 0xff;
+ 193   5                i = dispbuffer[0];
+ 194   5                break;
+ 195   5              case 1:
+ 196   5                PB = ~d2;
+ 197   5                i = 10; //A
+ 198   5                break;
+ 199   5              case 2:
+ 200   5                PB = ~d3;
+ 201   5                i = dispbuffer[1];
+ 202   5                break;
+ 203   5              case 3:
+ 204   5                PB = ~d4;
+ 205   5                i = 11; //b
+ 206   5                break;
+ 207   5              case 4:
+ 208   5                PC = ~d1;
+ 209   5                PB = 0xff;
+ 210   5                i = trysleft / 10;
+ 211   5                break;
+ 212   5              case 5:
+ 213   5                PC = ~d2;
+ 214   5                i = trysleft % 10;
+ 215   5                break;
+ 216   5              case 6:
+ 217   5                PB = ~d5;
+ 218   5                PC = 0xff;
+ 219   5                i = tempinputnumH / 10;
+ 220   5                break;
+ 221   5              case 7:
+ 222   5                PB = ~d6;
+ 223   5                i = tempinputnumH % 10;
+ 224   5                break;
+ 225   5              case 8:
+ 226   5                PB = ~d7;
+ 227   5                i = tempinputnumL / 10;
+ 228   5                break;
+ 229   5              case 9:
+ 230   5                PB = ~d8;
+ 231   5                i = tempinputnumL % 10;
+ 232   5                break;
+ 233   5              default:
+ 234   5                pos = 0;
+ 235   5              }
+ 236   4              i = words[i];
+ 237   4              if (pos >= 6)
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 5   
+
+ 238   4              {
+ 239   5                if (!(flag & d8))
+ 240   5                {
+ 241   6                  if (!(flag & d7))
+ 242   6                  { //00
+ 243   7                    if (pos == 6)
+ 244   7                    {
+ 245   8                      i |= words[29];
+ 246   8                    }
+ 247   7                  }
+ 248   6                  else
+ 249   6                  { //01
+ 250   7                    if (pos == 7)
+ 251   7                    {
+ 252   8                      i |= words[29];
+ 253   8                    }
+ 254   7                  }
+ 255   6                }
+ 256   5                else
+ 257   5                {
+ 258   6                  if (!(flag & d7))
+ 259   6                  { //10
+ 260   7                    if (pos == 8)
+ 261   7                    {
+ 262   8                      i |= words[29];
+ 263   8                    }
+ 264   7                  }
+ 265   6                  else
+ 266   6                  { //11
+ 267   7                    if (pos == 9)
+ 268   7                    {
+ 269   8                      i |= words[29];
+ 270   8                    }
+ 271   7                  }
+ 272   6                }
+ 273   5              }
+ 274   4              PA = i;
+ 275   4              sleep(6);
+ 276   4            }
+ 277   3            break;
+ 278   3          case 0x09: //[0000|1001]
+ 279   3            /*输入数值*/
+ 280   3            dispbuffer[6] = tempinputnumH / 10;
+ 281   3            dispbuffer[7] = tempinputnumH % 10;
+ 282   3            dispbuffer[8] = tempinputnumL / 10;
+ 283   3            dispbuffer[9] = tempinputnumL % 10;
+ 284   3            k = 0;
+ 285   3            for (i = 6; i <= 9; i++)
+ 286   3            {
+ 287   4              for (j = 6; j <= 9; j++)
+ 288   4              {
+ 289   5                if (dispbuffer[i] == dispbuffer[j]) //检测是否有重复数字
+ 290   5                {
+ 291   6                  if (i != j) //检测是否同一位
+ 292   6                  {
+ 293   7                    k++;
+ 294   7                    break;
+ 295   7                  }
+ 296   6                }
+ 297   5              }
+ 298   4            }
+ 299   3            if (k == 0)
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 6   
+
+ 300   3            { //数字无重复
+ 301   4              inputnumH = tempinputnumH;
+ 302   4              inputnumL = tempinputnumL;
+ 303   4              if (trysleft)
+ 304   4              {
+ 305   5                trysleft--;
+ 306   5                tempinputnumH = 0;
+ 307   5                tempinputnumL = 0;
+ 308   5                if (inputnumH == keynumH & inputnumL == keynumL)
+ 309   5                {
+ 310   6                  flag = 0x20; //游戏结束，赢
+ 311   6                }
+ 312   5                else if (trysleft == 0)
+ 313   5                {
+ 314   6                  flag = 0x10; //游戏结束，输
+ 315   6                }
+ 316   5                else
+ 317   5                {
+ 318   6                  flag = 0x01; //flag恢复
+ 319   6                }
+ 320   5              }
+ 321   4              else
+ 322   4              {
+ 323   5                flag = 0x10; //游戏结束，输
+ 324   5              }
+ 325   4            }
+ 326   3            else
+ 327   3            {        //数字重复，不做处理
+ 328   4              flag = 0x01; //flag恢复
+ 329   4            }
+ 330   3            break;
+ 331   3          case 0x20: //[0010|0000]
+ 332   3            /*赢*/
+ 333   3            dispbuffer[0] = keynumH / 10;
+ 334   3            dispbuffer[1] = keynumH % 10;
+ 335   3            dispbuffer[2] = keynumL / 10;
+ 336   3            dispbuffer[3] = keynumL % 10; //左边显示答案
+ 337   3            dispbuffer[4] = trysleft / 10;
+ 338   3            dispbuffer[5] = trysleft % 10;        //生命
+ 339   3            dispbuffer[6] = 26;             //U
+ 340   3            dispbuffer[7] = 26;             //U
+ 341   3            dispbuffer[8] = 17;             //I
+ 342   3            dispbuffer[9] = 20;             //N
+ 343   3            for (j = 0; (j < 10) & !(flag & d1); j++) //延时
+ 344   3            {
+ 345   4              flashdisplay();
+ 346   4            }
+ 347   3            break;
+ 348   3          case 0x10: //[0001|0000]
+ 349   3            /*输*/
+ 350   3            dispbuffer[0] = keynumH / 10;
+ 351   3            dispbuffer[1] = keynumH % 10;
+ 352   3            dispbuffer[2] = keynumL / 10;
+ 353   3            dispbuffer[3] = keynumL % 10; //左边显示答案
+ 354   3            dispbuffer[4] = trysleft / 10;
+ 355   3            dispbuffer[5] = trysleft % 10;        //生命
+ 356   3            dispbuffer[6] = 19;             //L
+ 357   3            dispbuffer[7] = 21;             //O
+ 358   3            dispbuffer[8] = 25;             //S
+ 359   3            dispbuffer[9] = 14;             //E
+ 360   3            for (j = 0; (j < 10) & !(flag & d1); j++) //延时
+ 361   3            {
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 7   
+
+ 362   4              flashdisplay();
+ 363   4            }
+ 364   3            break;
+ 365   3          default:
+ 366   3            flag = 0x00;
+ 367   3            break;
+ 368   3          }
+ 369   2        }
+ 370   1      }
+ 371          /*刷新数码管*/
+ 372          void flashdisplay()
+ 373          {
+ 374   1        uchar i, j;
+ 375   1        for (i = 0; i <= 9 & !(flag & d1); i++)
+ 376   1        {
+ 377   2          switch (i)
+ 378   2          {
+ 379   3          case 0:
+ 380   3            PB = ~d1;
+ 381   3            PC = 0xff;
+ 382   3            break;
+ 383   3          case 1:
+ 384   3            PB = ~d2;
+ 385   3            break;
+ 386   3          case 2:
+ 387   3            PB = ~d3;
+ 388   3            break;
+ 389   3          case 3:
+ 390   3            PB = ~d4;
+ 391   3            break;
+ 392   3          case 4:
+ 393   3            PC = ~d1;
+ 394   3            PB = 0xff;
+ 395   3            break;
+ 396   3          case 5:
+ 397   3            PC = ~d2;
+ 398   3            break;
+ 399   3          case 6:
+ 400   3            PB = ~d5;
+ 401   3            PC = 0xff;
+ 402   3            break;
+ 403   3          case 7:
+ 404   3            PB = ~d6;
+ 405   3            break;
+ 406   3          case 8:
+ 407   3            PB = ~d7;
+ 408   3            break;
+ 409   3          case 9:
+ 410   3            PB = ~d8;
+ 411   3            break;
+ 412   3          default:
+ 413   3            i = 0;
+ 414   3          }
+ 415   2          j = dispbuffer[i];
+ 416   2          PA = words[j];
+ 417   2          sleep(6);
+ 418   2        }
+ 419   1      }
+ 420          /*响应按键事件*/
+ 421          void presskey(uchar keyid)
+ 422          {
+ 423   1        char input = -1;
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 8   
+
+ 424   1        switch (keyid)
+ 425   1        {
+ 426   2        case k9: //9键
+ 427   2          input = 9;
+ 428   2          break;
+ 429   2        case k8: //8键
+ 430   2          input = 8;
+ 431   2          break;
+ 432   2        case k7: //7键
+ 433   2          input = 7;
+ 434   2          break;
+ 435   2        case k6: //6键
+ 436   2          input = 6;
+ 437   2          break;
+ 438   2        case k5: //5键
+ 439   2          input = 5;
+ 440   2          break;
+ 441   2        case k4: //4键
+ 442   2          input = 4;
+ 443   2          break;
+ 444   2        case k3: //3键
+ 445   2          input = 3;
+ 446   2          break;
+ 447   2        case k2: //2键
+ 448   2          input = 2;
+ 449   2          break;
+ 450   2        case k1: //1键
+ 451   2          input = 1;
+ 452   2          break;
+ 453   2        case k0: //0键
+ 454   2          input = 0;
+ 455   2          break;
+ 456   2        case kdiv: ///键
+ 457   2          if (flag & d1)
+ 458   2          {
+ 459   3            flag = 0x10;
+ 460   3          }
+ 461   2          break;
+ 462   2        case kmul: //\*键
+ 463   2          if (flag & d1)
+ 464   2          {
+ 465   3            tempinputnumH = 0;
+ 466   3            tempinputnumL = 0;
+ 467   3            flag &= 0x3f; //光标重置
+ 468   3          }
+ 469   2          break;
+ 470   2        case ksub: //-键
+ 471   2          if (flag & d1)
+ 472   2          {
+ 473   3            if (!(flag & d8))
+ 474   3            {
+ 475   4              if (!(flag & d7))
+ 476   4              { //00
+ 477   5                flag |= d7;
+ 478   5                flag |= d8;
+ 479   5              }
+ 480   4              else
+ 481   4              { //01
+ 482   5                flag &= ~d7;
+ 483   5              }
+ 484   4            }
+ 485   3            else
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 9   
+
+ 486   3            {
+ 487   4              if (!(flag & d7))
+ 488   4              { //10
+ 489   5                flag |= d7;
+ 490   5                flag &= ~d8;
+ 491   5              }
+ 492   4              else
+ 493   4              { //11
+ 494   5                flag &= ~d7;
+ 495   5              }
+ 496   4            }
+ 497   3          }
+ 498   2          break;
+ 499   2        case kadd: //+键
+ 500   2          if (flag & d1)
+ 501   2          {
+ 502   3            if (!(flag & d8))
+ 503   3            {
+ 504   4              if (!(flag & d7))
+ 505   4              { //00
+ 506   5                flag |= d7;
+ 507   5              }
+ 508   4              else
+ 509   4              { //01
+ 510   5                flag &= ~d7;
+ 511   5                flag |= d8;
+ 512   5              }
+ 513   4            }
+ 514   3            else
+ 515   3            {
+ 516   4              if (!(flag & d7))
+ 517   4              { //10
+ 518   5                flag |= d7;
+ 519   5              }
+ 520   4              else
+ 521   4              { //11
+ 522   5                flag &= ~d7;
+ 523   5                flag &= ~d8;
+ 524   5              }
+ 525   4            }
+ 526   3          }
+ 527   2          break;
+ 528   2        case kclr: //C键
+ 529   2          flag = 0x04;
+ 530   2          break;
+ 531   2        case kequ: //=键
+ 532   2          if (flag & d1)
+ 533   2          {
+ 534   3            flag = 0x09; //进入数值输入模式
+ 535   3          }
+ 536   2          break;
+ 537   2        default:
+ 538   2          break;
+ 539   2        }
+ 540   1        if (input >= 0) //响应数字输入
+ 541   1        {
+ 542   2          if (flag & d1)
+ 543   2          {
+ 544   3            if (!(flag & d8))
+ 545   3            {
+ 546   4              if (!(flag & d7))
+ 547   4              { //00
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 10  
+
+ 548   5                input *= 10;
+ 549   5                input += tempinputnumH % 10;
+ 550   5                tempinputnumH = input;
+ 551   5              }
+ 552   4              else
+ 553   4              { //01
+ 554   5                input += (tempinputnumH / 10) * 10;
+ 555   5                tempinputnumH = input;
+ 556   5              }
+ 557   4            }
+ 558   3            else
+ 559   3            {
+ 560   4              if (!(flag & d7))
+ 561   4              { //10
+ 562   5                input *= 10;
+ 563   5                input += tempinputnumL % 10;
+ 564   5                tempinputnumL = input;
+ 565   5              }
+ 566   4              else
+ 567   4              { //11
+ 568   5                input += (tempinputnumL / 10) * 10;
+ 569   5                tempinputnumL = input;
+ 570   5              }
+ 571   4            }
+ 572   3            presskey(kadd);
+ 573   3          }
+ 574   2          else if ((flag & d5) | (flag & d6))
+ 575   2          {
+ 576   3            flag = 0x00;
+ 577   3          }
+ 578   2        }
+ 579   1      }
+ 580          /*按键中断判断*/
+ 581          void keypress() interrupt 0
+ 582          {
+ 583   1        uchar keypos = 0; //row行, col列;
+ 584   1        uchar tmp;
+ 585   1        if (!(P3 & d3))
+ 586   1        {
+ 587   2          if (!(P1 & d1))
+ 588   2          {
+ 589   3            keypos = 10;
+ 590   3          }
+ 591   2          else if (!(P1 & d2))
+ 592   2          {
+ 593   3            keypos = 20;
+ 594   3          }
+ 595   2          else if (!(P1 & d3))
+ 596   2          {
+ 597   3            keypos = 30;
+ 598   3          }
+ 599   2          else if (!(P1 & d4))
+ 600   2          {
+ 601   3            keypos = 40;
+ 602   3          }
+ 603   2          tmp = P1 & 0x0f;
+ 604   2      
+ 605   2          P1 = 0x0f | d5;
+ 606   2          if ((P1 & 0x0f) != tmp)
+ 607   2          {
+ 608   3            keypos += 1;
+ 609   3          }
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 11  
+
+ 610   2          else
+ 611   2          {
+ 612   3            P1 = 0x0f | d6;
+ 613   3            if ((P1 & 0x0f) != tmp)
+ 614   3            {
+ 615   4              keypos += 2;
+ 616   4            }
+ 617   3            else
+ 618   3            {
+ 619   4              P1 = 0x0f | d7;
+ 620   4              if ((P1 & 0x0f) != tmp)
+ 621   4              {
+ 622   5                keypos += 3;
+ 623   5              }
+ 624   4              else
+ 625   4              {
+ 626   5                P1 = 0x0f | d8;
+ 627   5                if ((P1 & 0x0f) != tmp)
+ 628   5                {
+ 629   6                  keypos += 4;
+ 630   6                }
+ 631   5              }
+ 632   4            }
+ 633   3          }
+ 634   2          presskey(keypos);
+ 635   2          P1 = 0x0f; //准备接受键盘输入
+ 636   2          IE0 = 0;   //清除中断标志，防止一直执行
+ 637   2        }
+ 638   1      }
+ 639          /*定时器T1用来产生随机数*/
+ 640          void timer1() interrupt 3
+ 641          {
+ 642   1        TH1 = (65535 - 1000) / 256; //1ms定时
+ 643   1        TL1 = (65535 - 1000) % 256;
+ 644   1        if (randseed < 0xff)
+ 645   1        {
+ 646   2          randseed++;
+ 647   2        }
+ 648   1        else
+ 649   1        {
+ 650   2          randseed = 0;
+ 651   2        }
+ 652   1      }
+ 653          /*简单延时函数*/
+ 654          void sleep(uint j)
+ 655          {
+ 656   1        uchar i;
+ 657   1        for (; j; j--)
+ 658   1        {
+ 659   2          for (i = 110; i; i--)
+ 660   2            ;
+ 661   2        }
+ 662   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1855    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     50       6
+   IDATA SIZE       =   ----    ----
+C51 COMPILER V9.51   1                                                                     08/15/2019 09:32:51 PAGE 12  
+
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
